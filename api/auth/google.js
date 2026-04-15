@@ -44,7 +44,7 @@ export default async function handler(req, res) {
 
     const sql = neon(process.env.DATABASE_URL);
 
-const resultado = await sql`
+    const resultado = await sql`
   SELECT 
       e.id,
       e.nombre,
