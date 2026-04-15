@@ -1,6 +1,16 @@
 import { neon } from "@neondatabase/serverless";
 
 export default async function handler(req, res) {
+  // Headers CORS
+  res.setHeader("Access-Control-Allow-Origin", "https://pablomacon.github.io");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // Respuesta al preflight
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Método no permitido" });
   }
@@ -11,7 +21,7 @@ export default async function handler(req, res) {
     if (!correo || !slug) {
       return res.status(400).json({
         ok: false,
-        message: "Faltan datos: correo o slug.",
+        message: "Faltan datos: correo o slug."
       });
     }
 
@@ -37,7 +47,7 @@ export default async function handler(req, res) {
     if (resultado.length === 0) {
       return res.status(403).json({
         ok: false,
-        message: "El estudiante no está habilitado para esta actividad.",
+        message: "El estudiante no está habilitado para esta actividad."
       });
     }
 
@@ -46,14 +56,14 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       message: "Acceso autorizado.",
-      estudiante,
+      estudiante
     });
   } catch (error) {
     console.error("Error en /api/auth/google:", error);
 
     return res.status(500).json({
       ok: false,
-      message: "Error al consultar la base de datos.",
+      message: "Error al consultar la base de datos."
     });
   }
 }
