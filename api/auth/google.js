@@ -22,13 +22,13 @@ export default async function handler(req, res) {
     if (!idToken || !slug) {
       return res.status(400).json({
         ok: false,
-        message: "Faltan datos: idToken o slug."
+        message: "Faltan datos: idToken o slug.",
       });
     }
 
     const ticket = await client.verifyIdToken({
       idToken,
-      audience: process.env.GOOGLE_CLIENT_ID
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     if (!payload || !payload.email) {
       return res.status(401).json({
         ok: false,
-        message: "No se pudo obtener el correo desde Google."
+        message: "No se pudo obtener el correo desde Google.",
       });
     }
 
@@ -44,41 +44,42 @@ export default async function handler(req, res) {
 
     const sql = neon(process.env.DATABASE_URL);
 
-    const resultado = await sql`
-      SELECT 
-          e.nombre,
-          e.apellido,
-          e.grupo,
-          e.correo_electronico,
-          a.titulo
-      FROM estudiantes e
-      JOIN realiza r ON e.id = r.estudiante_id
-      JOIN actividades a ON a.id = r.actividad_id
-      WHERE lower(e.correo_electronico) = lower(${correo})
-        AND a.slug = ${slug}
-        AND e.activo = TRUE
-        AND a.activa = TRUE
-        AND r.habilitada = TRUE
-    `;
+const resultado = await sql`
+  SELECT 
+      e.id,
+      e.nombre,
+      e.apellido,
+      e.grupo,
+      e.correo_electronico,
+      a.titulo
+  FROM estudiantes e
+  JOIN realiza r ON e.id = r.estudiante_id
+  JOIN actividades a ON a.id = r.actividad_id
+  WHERE lower(e.correo_electronico) = lower(${correo})
+    AND a.slug = ${slug}
+    AND e.activo = TRUE
+    AND a.activa = TRUE
+    AND r.habilitada = TRUE
+`;
 
     if (resultado.length === 0) {
       return res.status(403).json({
         ok: false,
-        message: "Tu cuenta no está habilitada para esta actividad."
+        message: "Tu cuenta no está habilitada para esta actividad.",
       });
     }
 
     return res.status(200).json({
       ok: true,
       message: "Acceso autorizado.",
-      estudiante: resultado[0]
+      estudiante: resultado[0],
     });
   } catch (error) {
     console.error("Error en /api/auth/google:", error);
 
     return res.status(500).json({
       ok: false,
-      message: "Error al validar la autenticación o consultar la base."
+      message: "Error al validar la autenticación o consultar la base.",
     });
   }
 }
