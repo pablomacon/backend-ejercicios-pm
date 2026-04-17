@@ -125,19 +125,25 @@ export default async function handler(req, res) {
     // Insertar respuestas
     for (const respuesta of respuestas) {
       await sql`
-        INSERT INTO respuestas_intento (
-          intento_id,
-          numero_pregunta,
-          respuesta_dada,
-          es_correcta
-        )
-        VALUES (
-          ${intento_id},
-          ${respuesta.numero_pregunta},
-          ${respuesta.respuesta_dada ?? ""},
-          ${respuesta.es_correcta}
-        )
-      `;
+    INSERT INTO respuestas_intento (
+      intento_id,
+      numero_pregunta,
+      respuesta_dada,
+      es_correcta,
+      enunciado_pregunta,
+      respuesta_correcta,
+      tipo_pregunta
+    )
+    VALUES (
+      ${intento_id},
+      ${respuesta.numero_pregunta},
+      ${respuesta.respuesta_dada ?? ""},
+      ${respuesta.es_correcta},
+      ${respuesta.enunciado_pregunta ?? ""},
+      ${respuesta.respuesta_correcta ?? ""},
+      ${respuesta.tipo_pregunta ?? ""}
+    )
+  `;
     }
 
     return res.status(200).json({
