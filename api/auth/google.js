@@ -3,14 +3,29 @@ import { OAuth2Client } from "google-auth-library";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const allowedOrigins = [
+  "https://pablomacon.github.io",
+  "https://actividades.profemacon.net",
+  "https://pm-actividades-hub.pages.dev"
+];
+
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "https://pablomacon.github.io");
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
+
+  // resto del código igual...
+}
 
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Método no permitido" });
