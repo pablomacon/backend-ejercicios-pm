@@ -6,7 +6,7 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const allowedOrigins = [
   "https://pablomacon.github.io",
   "https://actividades.profemacon.net",
-  "https://pm-actividades-hub.pages.dev"
+  "https://pm-actividades-hub.pages.dev",
 ];
 
 export default async function handler(req, res) {
@@ -23,9 +23,6 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
-
-  // resto del código igual...
-}
 
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Método no permitido" });
@@ -60,22 +57,22 @@ export default async function handler(req, res) {
     const sql = neon(process.env.DATABASE_URL);
 
     const resultado = await sql`
-  SELECT 
-      e.id,
-      e.nombre,
-      e.apellido,
-      e.grupo,
-      e.correo_electronico,
-      a.titulo
-  FROM estudiantes e
-  JOIN realiza r ON e.id = r.estudiante_id
-  JOIN actividades a ON a.id = r.actividad_id
-  WHERE lower(e.correo_electronico) = lower(${correo})
-    AND a.slug = ${slug}
-    AND e.activo = TRUE
-    AND a.activa = TRUE
-    AND r.habilitada = TRUE
-`;
+      SELECT 
+          e.id,
+          e.nombre,
+          e.apellido,
+          e.grupo,
+          e.correo_electronico,
+          a.titulo
+      FROM estudiantes e
+      JOIN realiza r ON e.id = r.estudiante_id
+      JOIN actividades a ON a.id = r.actividad_id
+      WHERE lower(e.correo_electronico) = lower(${correo})
+        AND a.slug = ${slug}
+        AND e.activo = TRUE
+        AND a.activa = TRUE
+        AND r.habilitada = TRUE
+    `;
 
     if (resultado.length === 0) {
       return res.status(403).json({
