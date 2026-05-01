@@ -1,7 +1,19 @@
 import { neon } from "@neondatabase/serverless";
 
+const allowedOrigins = [
+  "https://pablomacon.github.io",
+  "https://actividades.profemacon.net",
+  "https://pm-actividades-hub.pages.dev",
+];
+
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "https://pablomacon.github.io");
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -43,7 +55,6 @@ export default async function handler(req, res) {
 
     const sql = neon(process.env.DATABASE_URL);
 
-    // Buscar la actividad
     const actividadResultado = await sql`
       SELECT id
       FROM actividades
@@ -61,7 +72,6 @@ export default async function handler(req, res) {
 
     const actividad_id = actividadResultado[0].id;
 
-    // Verificar que el estudiante esté habilitado para esa actividad
     const habilitacionResultado = await sql`
       SELECT id
       FROM realiza
@@ -78,7 +88,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Obtener próximo número de intento
     const intentoResultado = await sql`
       SELECT COALESCE(MAX(numero_intento), 0) AS max_intento
       FROM intentos
@@ -95,7 +104,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Insertar intento
     const nuevoIntento = await sql`
       INSERT INTO intentos (
         estudiante_id,
@@ -122,28 +130,27 @@ export default async function handler(req, res) {
 
     const intento_id = nuevoIntento[0].id;
 
-    // Insertar respuestas
     for (const respuesta of respuestas) {
       await sql`
-    INSERT INTO respuestas_intento (
-      intento_id,
-      numero_pregunta,
-      respuesta_dada,
-      es_correcta,
-      enunciado_pregunta,
-      respuesta_correcta,
-      tipo_pregunta
-    )
-    VALUES (
-      ${intento_id},
-      ${respuesta.numero_pregunta},
-      ${respuesta.respuesta_dada ?? ""},
-      ${respuesta.es_correcta},
-      ${respuesta.enunciado_pregunta ?? ""},
-      ${respuesta.respuesta_correcta ?? ""},
-      ${respuesta.tipo_pregunta ?? ""}
-    )
-  `;
+        INSERT INTO respuestas_intento (
+          intento_id,
+          numero_pregunta,
+          respuesta_dada,
+          es_correcta,
+          enunciado_pregunta,
+          respuesta_correcta,
+          tipo_pregunta
+        )
+        VALUES (
+          ${intento_id},
+          ${respuesta.numero},
+          ${Array.isArray(respuesta.respuesta) ? respuesta.respuesta.join("|") : (respuesta.respuesta ?? "")},
+          ${null},
+          ${""},
+          ${""},
+          ${""}
+        )
+      `;
     }
 
     return res.status(200).json({
