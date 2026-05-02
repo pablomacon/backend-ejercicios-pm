@@ -131,26 +131,37 @@ export default async function handler(req, res) {
     const intento_id = nuevoIntento[0].id;
 
     for (const respuesta of respuestas) {
+      const numeroPregunta = respuesta.numero ?? respuesta.numero_pregunta;
+
+      const respuestaDada =
+        respuesta.respuesta !== undefined
+          ? respuesta.respuesta
+          : respuesta.respuesta_dada;
+
+      const respuestaDadaTexto = Array.isArray(respuestaDada)
+        ? respuestaDada.join("|")
+        : (respuestaDada ?? "");
+
       await sql`
-        INSERT INTO respuestas_intento (
-          intento_id,
-          numero_pregunta,
-          respuesta_dada,
-          es_correcta,
-          enunciado_pregunta,
-          respuesta_correcta,
-          tipo_pregunta
-        )
-        VALUES (
-          ${intento_id},
-          ${respuesta.numero},
-          ${Array.isArray(respuesta.respuesta) ? respuesta.respuesta.join("|") : (respuesta.respuesta ?? "")},
-          ${false},
-          ${""},
-          ${""},
-          ${""}
-        )
-      `;
+    INSERT INTO respuestas_intento (
+      intento_id,
+      numero_pregunta,
+      respuesta_dada,
+      es_correcta,
+      enunciado_pregunta,
+      respuesta_correcta,
+      tipo_pregunta
+    )
+    VALUES (
+      ${intento_id},
+      ${numeroPregunta},
+      ${respuestaDadaTexto},
+      ${respuesta.es_correcta ?? false},
+      ${respuesta.enunciado_pregunta ?? ""},
+      ${respuesta.respuesta_correcta ?? ""},
+      ${respuesta.tipo_pregunta ?? ""}
+    )
+  `;
     }
 
     return res.status(200).json({
