@@ -145,7 +145,7 @@ export default async function handler(req, res) {
           ${intento_id},
           ${respuesta.numero},
           ${Array.isArray(respuesta.respuesta) ? respuesta.respuesta.join("|") : (respuesta.respuesta ?? "")},
-          ${null},
+          ${false},
           ${""},
           ${""},
           ${""}
