@@ -15,63 +15,92 @@ const allowedOrigins = [
   "http://127.0.0.1:5500",
 ];
 
-function normalizarTexto(valor) {
-  return String(valor ?? "").trim();
+function setCorsHeaders(req, res) {
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
-function normalizarRespuestaSimple(valor) {
-  return normalizarTexto(valor).toLowerCase();
-}
+/*
+  Normaliza respuestas para comparar de forma consistente.
 
-function normalizarRespuestaCheckbox(valor) {
+  Debe ser equivalente a la función usada en /api/corregir,
+  para que el puntaje general y el detalle por pregunta no se contradigan.
+*/
+function normalizarRespuesta(valor) {
+  if (valor === null || valor === undefined) {
+    return "";
+  }
+
   if (Array.isArray(valor)) {
-    return valor.map((item) => String(item).trim()).sort();
+    return [...valor]
+      .map(String)
+      .map((v) => v.trim())
+      .sort()
+      .join("|");
   }
 
-  const texto = normalizarTexto(valor);
+  if (typeof valor === "string") {
+    const texto = valor.trim();
 
-  if (!texto) return [];
-
-  // Soporta formatos posibles:
-  // "a|c|d"
-  // "a,c,d"
-  // '["a","c","d"]'
-  try {
-    const parseado = JSON.parse(texto);
-
-    if (Array.isArray(parseado)) {
-      return parseado.map((item) => String(item).trim()).sort();
+    if (!texto) {
+      return "";
     }
-  } catch (error) {
-    // No era JSON, seguimos con separadores.
+
+    // Si viene como string JSON, por ejemplo: '["a","c","d"]'
+    if (texto.startsWith("[") && texto.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(texto);
+
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map(String)
+            .map((v) => v.trim())
+            .filter(Boolean)
+            .sort()
+            .join("|");
+        }
+      } catch (error) {
+        // Si no se puede parsear, sigue como texto normal.
+      }
+    }
+
+    // Si viene como "a|c|d", también se normaliza como conjunto.
+    if (texto.includes("|")) {
+      return texto
+        .split("|")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .sort()
+        .join("|");
+    }
+
+    // Si viene como "a,c,d", también lo aceptamos como múltiple.
+    if (texto.includes(",")) {
+      return texto
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .sort()
+        .join("|");
+    }
+
+    return texto;
   }
 
-  return texto
-    .split(/[|,]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .sort();
+  return String(valor).trim();
 }
 
-function sonArraysIguales(a, b) {
-  if (a.length !== b.length) return false;
-
-  return a.every((valor, index) => valor === b[index]);
-}
-
-function corregirRespuesta({ tipoPregunta, respuestaDada, respuestaCorrecta }) {
-  const tipo = normalizarTexto(tipoPregunta).toLowerCase();
-
-  if (tipo === "checkbox") {
-    const dada = normalizarRespuestaCheckbox(respuestaDada);
-    const correcta = normalizarRespuestaCheckbox(respuestaCorrecta);
-
-    return sonArraysIguales(dada, correcta);
-  }
-
+function corregirRespuesta({ respuestaDada, respuestaCorrecta }) {
   return (
-    normalizarRespuestaSimple(respuestaDada) ===
-    normalizarRespuestaSimple(respuestaCorrecta)
+    normalizarRespuesta(respuestaDada) ===
+    normalizarRespuesta(respuestaCorrecta)
   );
 }
 
@@ -83,16 +112,18 @@ function respuestaATexto(valor) {
   return String(valor ?? "");
 }
 
-export default async function handler(req, res) {
-  const origin = req.headers.origin;
+function limpiarNumeroPregunta(valor) {
+  const numero = Number(valor);
 
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
+  if (!Number.isInteger(numero) || numero <= 0) {
+    return null;
   }
 
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  return numero;
+}
+
+export default async function handler(req, res) {
+  setCorsHeaders(req, res);
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -230,9 +261,17 @@ export default async function handler(req, res) {
     const intento_id = nuevoIntento[0].id;
 
     for (const respuesta of respuestas) {
-      const numeroPregunta = Number(
+      const numeroPregunta = limpiarNumeroPregunta(
         respuesta.numero ?? respuesta.numero_pregunta,
       );
+
+      if (!numeroPregunta) {
+        console.warn(
+          "Respuesta ignorada por número de pregunta inválido:",
+          respuesta,
+        );
+        continue;
+      }
 
       const preguntaBD = preguntasPorNumero.get(numeroPregunta);
 
@@ -242,16 +281,20 @@ export default async function handler(req, res) {
           : respuesta.respuesta_dada;
 
       const respuestaDadaTexto = respuestaATexto(respuestaDada);
-      const tipoPregunta = respuesta.tipo ?? respuesta.tipo_pregunta ?? "";
+
       const respuestaCorrecta = preguntaBD?.respuesta_correcta ?? "";
 
       const esCorrecta = preguntaBD
         ? corregirRespuesta({
-            tipoPregunta,
             respuestaDada,
             respuestaCorrecta,
           })
         : false;
+
+      const enunciadoPregunta =
+        respuesta.enunciado ?? respuesta.enunciado_pregunta ?? "";
+
+      const tipoPregunta = respuesta.tipo ?? respuesta.tipo_pregunta ?? "";
 
       await sql`
         INSERT INTO respuestas_intento (
@@ -268,7 +311,7 @@ export default async function handler(req, res) {
           ${numeroPregunta},
           ${respuestaDadaTexto},
           ${esCorrecta},
-          ${respuesta.enunciado ?? respuesta.enunciado_pregunta ?? ""},
+          ${enunciadoPregunta},
           ${respuestaCorrecta},
           ${tipoPregunta}
         )
