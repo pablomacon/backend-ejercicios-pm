@@ -4,7 +4,84 @@ const allowedOrigins = [
   "https://pablomacon.github.io",
   "https://actividades.profemacon.net",
   "https://pm-actividades-hub.pages.dev",
+
+  // Panel docente
+  "https://resultados.profemacon.net",
+  "https://resultados-pm.pages.dev",
+
+  // Desarrollo local
+  "http://localhost",
+  "http://localhost:5500",
+  "http://127.0.0.1:5500",
 ];
+
+function normalizarTexto(valor) {
+  return String(valor ?? "").trim();
+}
+
+function normalizarRespuestaSimple(valor) {
+  return normalizarTexto(valor).toLowerCase();
+}
+
+function normalizarRespuestaCheckbox(valor) {
+  if (Array.isArray(valor)) {
+    return valor.map((item) => String(item).trim()).sort();
+  }
+
+  const texto = normalizarTexto(valor);
+
+  if (!texto) return [];
+
+  // Soporta formatos posibles:
+  // "a|c|d"
+  // "a,c,d"
+  // '["a","c","d"]'
+  try {
+    const parseado = JSON.parse(texto);
+
+    if (Array.isArray(parseado)) {
+      return parseado.map((item) => String(item).trim()).sort();
+    }
+  } catch (error) {
+    // No era JSON, seguimos con separadores.
+  }
+
+  return texto
+    .split(/[|,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort();
+}
+
+function sonArraysIguales(a, b) {
+  if (a.length !== b.length) return false;
+
+  return a.every((valor, index) => valor === b[index]);
+}
+
+function corregirRespuesta({ tipoPregunta, respuestaDada, respuestaCorrecta }) {
+  const tipo = normalizarTexto(tipoPregunta).toLowerCase();
+
+  if (tipo === "checkbox") {
+    const dada = normalizarRespuestaCheckbox(respuestaDada);
+    const correcta = normalizarRespuestaCheckbox(respuestaCorrecta);
+
+    return sonArraysIguales(dada, correcta);
+  }
+
+  return (
+    normalizarRespuestaSimple(respuestaDada) ===
+    normalizarRespuestaSimple(respuestaCorrecta)
+  );
+}
+
+function respuestaATexto(valor) {
+  if (Array.isArray(valor)) {
+    return valor.join("|");
+  }
+
+  return String(valor ?? "");
+}
 
 export default async function handler(req, res) {
   const origin = req.headers.origin;
@@ -22,7 +99,10 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, message: "Método no permitido" });
+    return res.status(405).json({
+      ok: false,
+      message: "Método no permitido",
+    });
   }
 
   try {
@@ -56,7 +136,7 @@ export default async function handler(req, res) {
     const sql = neon(process.env.DATABASE_URL);
 
     const actividadResultado = await sql`
-      SELECT id
+      SELECT id, slug
       FROM actividades
       WHERE slug = ${actividad_slug}
         AND activa = TRUE
@@ -104,6 +184,25 @@ export default async function handler(req, res) {
       });
     }
 
+    /*
+      Traemos respuestas correctas desde BD.
+      No confiamos en el frontend para es_correcta ni respuesta_correcta.
+    */
+    const preguntasBD = await sql`
+      SELECT
+        numero_pregunta,
+        respuesta_correcta
+      FROM preguntas
+      WHERE actividad_slug = ${actividad_slug}
+      ORDER BY numero_pregunta ASC
+    `;
+
+    const preguntasPorNumero = new Map();
+
+    for (const pregunta of preguntasBD) {
+      preguntasPorNumero.set(Number(pregunta.numero_pregunta), pregunta);
+    }
+
     const nuevoIntento = await sql`
       INSERT INTO intentos (
         estudiante_id,
@@ -131,37 +230,49 @@ export default async function handler(req, res) {
     const intento_id = nuevoIntento[0].id;
 
     for (const respuesta of respuestas) {
-      const numeroPregunta = respuesta.numero ?? respuesta.numero_pregunta;
+      const numeroPregunta = Number(
+        respuesta.numero ?? respuesta.numero_pregunta,
+      );
+
+      const preguntaBD = preguntasPorNumero.get(numeroPregunta);
 
       const respuestaDada =
         respuesta.respuesta !== undefined
           ? respuesta.respuesta
           : respuesta.respuesta_dada;
 
-      const respuestaDadaTexto = Array.isArray(respuestaDada)
-        ? respuestaDada.join("|")
-        : (respuestaDada ?? "");
+      const respuestaDadaTexto = respuestaATexto(respuestaDada);
+      const tipoPregunta = respuesta.tipo ?? respuesta.tipo_pregunta ?? "";
+      const respuestaCorrecta = preguntaBD?.respuesta_correcta ?? "";
+
+      const esCorrecta = preguntaBD
+        ? corregirRespuesta({
+            tipoPregunta,
+            respuestaDada,
+            respuestaCorrecta,
+          })
+        : false;
 
       await sql`
-    INSERT INTO respuestas_intento (
-      intento_id,
-      numero_pregunta,
-      respuesta_dada,
-      es_correcta,
-      enunciado_pregunta,
-      respuesta_correcta,
-      tipo_pregunta
-    )
-    VALUES (
-      ${intento_id},
-      ${numeroPregunta},
-      ${respuestaDadaTexto},
-      ${respuesta.es_correcta ?? false},
-      ${respuesta.enunciado_pregunta ?? ""},
-      ${respuesta.respuesta_correcta ?? ""},
-      ${respuesta.tipo_pregunta ?? ""}
-    )
-  `;
+        INSERT INTO respuestas_intento (
+          intento_id,
+          numero_pregunta,
+          respuesta_dada,
+          es_correcta,
+          enunciado_pregunta,
+          respuesta_correcta,
+          tipo_pregunta
+        )
+        VALUES (
+          ${intento_id},
+          ${numeroPregunta},
+          ${respuestaDadaTexto},
+          ${esCorrecta},
+          ${respuesta.enunciado ?? respuesta.enunciado_pregunta ?? ""},
+          ${respuestaCorrecta},
+          ${tipoPregunta}
+        )
+      `;
     }
 
     return res.status(200).json({
