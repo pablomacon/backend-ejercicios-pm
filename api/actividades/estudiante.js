@@ -7,6 +7,8 @@ const allowedOrigins = [
   "https://pablomacon.github.io",
   "https://actividades.profemacon.net",
   "https://pm-actividades-hub.pages.dev",
+  "http://localhost:5500",
+  "http://127.0.0.1:5500",
 ];
 
 export default async function handler(req, res) {
