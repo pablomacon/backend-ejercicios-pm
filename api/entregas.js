@@ -19,7 +19,7 @@ async function guardarTexto(sql, estudiante, body) {
 async function iniciarUpload(sql, estudiante, body) {
   const numero = exercise(body.numeroEjercicio), original = String(body.nombreOriginal || ""), ext = extension(original), size = Number(body.tamanioBytes);
   if (!numero || !allowedExtensions.has(ext) || !Number.isInteger(size) || size < 1 || size > MAX_BYTES) { const error = new Error("Datos de archivo no válidos."); error.status = 400; throw error; }
-  const folder = await deliveryFolder(estudiante), uploadToken = randomUUID();
+  const folder = await deliveryFolder(estudiante, Math.ceil(numero / 10)), uploadToken = randomUUID();
   const base = safeName(original.replace(new RegExp(`\\.${ext}$`, "i"), ""));
   const name = `E${String(numero).padStart(2, "0")}_${base}_${new Date().toISOString().replace(/[-:.TZ]/g, "")}.${ext}`;
   const response = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,size", { method: "POST", headers: { Authorization: `Bearer ${folder.token}`, "Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": String(body.mimeType || "application/octet-stream"), "X-Upload-Content-Length": String(size) }, body: JSON.stringify({ name, parents: [folder.id] }) });
