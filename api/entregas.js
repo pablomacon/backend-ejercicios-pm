@@ -29,13 +29,31 @@ async function iniciarUpload(sql, estudiante, body) {
 }
 
 async function confirmarUpload(sql, estudiante, body) {
-  const explicacion = String(body.respuestaExplicacion || "").trim(), fileId = String(body.driveFileId || ""), uploadToken = String(body.uploadToken || "");
-  if (!explicacion || !fileId || !uploadToken) { const error = new Error("Faltan datos para confirmar la entrega."); error.status = 400; throw error; }
+  const explicacion = String(body.respuestaExplicacion || "").trim(), fileId = String(body.driveFileId || ""), uploadToken = String(body.uploadToken || ""), uploadUrl = String(body.uploadUrl || "");
+  if (!explicacion || !uploadToken) { const error = new Error("Faltan datos para confirmar la entrega."); error.status = 400; throw error; }
+
+  if (fileId) {
+    const existing = await sql`SELECT en.id,en.numero_version,en.fecha_entrega FROM archivos_entrega ar JOIN entregas_ejercicios en ON en.id=ar.entrega_id WHERE ar.drive_file_id=${fileId} AND en.estudiante_id=${estudiante.id} AND en.actividad_id=${estudiante.actividad_id} LIMIT 1`;
+    if (existing.length) return { ok: true, entrega: existing[0], recuperada: true };
+  }
+
   const pending = await sql`SELECT * FROM entregas_upload_pendientes WHERE token=${uploadToken} AND estudiante_id=${estudiante.id} AND actividad_id=${estudiante.actividad_id} AND creado_en > now()-interval '1 hour' LIMIT 1`;
   if (!pending.length) { const error = new Error("La sesión de subida no existe o venció."); error.status = 404; throw error; }
   const item = pending[0], auth = await driveToken();
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,parents`, { headers: { Authorization: `Bearer ${auth}` } });
-  const file = await response.json(); if (!response.ok || file.id !== fileId || file.name !== item.nombre_drive || !file.parents?.includes(item.drive_folder_id) || Number(file.size) !== Number(item.tamanio_bytes)) { const error = new Error("Drive no confirmó el archivo esperado."); error.status = 400; throw error; }
+  let response, directResult = false;
+  if (fileId) {
+    directResult = true;
+    response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,parents`, { headers: { Authorization: `Bearer ${auth}` } });
+  } else if (uploadUrl.startsWith("https://www.googleapis.com/upload/drive/")) {
+    directResult = true;
+    response = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Length": "0", "Content-Range": `bytes */${item.tamanio_bytes}` } });
+  } else {
+    const query = encodeURIComponent(`name='${item.nombre_drive.replaceAll("'", "\\'")}' and '${item.drive_folder_id}' in parents and trashed=false`);
+    response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,size,parents)&pageSize=1`, { headers: { Authorization: `Bearer ${auth}` } });
+  }
+  const result = await response.json().catch(() => ({}));
+  const file = directResult ? result : result.files?.[0];
+  if (!response.ok || !file || (fileId && file.id !== fileId) || file.name !== item.nombre_drive || !file.parents?.includes(item.drive_folder_id) || Number(file.size) !== Number(item.tamanio_bytes)) { const error = new Error("No pudimos comprobar que Drive recibiera el archivo completo. Podés volver a intentar esta misma entrega."); error.status = 409; throw error; }
   const entrega = await createDelivery(sql, { estudianteId: estudiante.id, actividadId: estudiante.actividad_id, numeroEjercicio: item.numero_ejercicio, tipo: "archivo", explicacion });
   await sql`INSERT INTO archivos_entrega (entrega_id,drive_file_id,nombre_original,nombre_drive,mime_type,extension,tamanio_bytes) VALUES (${entrega[0].id},${file.id},${item.nombre_original},${file.name},${file.mimeType || item.mime_type},${item.extension},${item.tamanio_bytes})`;
   await sql`DELETE FROM entregas_upload_pendientes WHERE token=${uploadToken}`;
@@ -45,7 +63,7 @@ async function confirmarUpload(sql, estudiante, body) {
 export default async function handler(req, res) {
   cors(req, res); if (req.method === "OPTIONS") return res.status(200).end(); if (req.method !== "POST") return methodError(res);
   try {
-    const { sql, estudiante } = await access(req.body?.idToken);
+    const { sql, estudiante } = await access(req.body?.sessionToken || req.body?.idToken);
     const actions = { estado, "guardar-texto": guardarTexto, "iniciar-upload": iniciarUpload, "confirmar-upload": confirmarUpload };
     const action = actions[req.body?.accion]; if (!action) return res.status(400).json({ ok: false, message: "Acción de entrega no válida." });
     return res.status(200).json(await action(sql, estudiante, req.body || {}));

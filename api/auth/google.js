@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { OAuth2Client } from "google-auth-library";
+import { createStudentSession } from "../../lib/student-session.js";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -87,6 +88,7 @@ export default async function handler(req, res) {
       ok: true,
       message: "Acceso autorizado.",
       estudiante: resultado[0],
+      sessionToken: createStudentSession({ email: correo, slug }),
     });
   } catch (error) {
     console.error("Error en /api/auth/google:", error);
