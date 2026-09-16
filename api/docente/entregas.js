@@ -23,10 +23,10 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, message: "Método no permitido." });
   try {
     await validate(req.body?.idToken);
-    const grupo = String(req.body?.grupo || "").trim() || null;
     const entregas = await sql`
       SELECT
-        en.id AS entrega_id, e.nombre, e.apellido, e.grupo,
+        en.id AS entrega_id, e.id AS estudiante_id, e.nombre, e.apellido, e.grupo,
+        a.slug AS actividad_slug, a.titulo AS actividad_titulo,
         en.numero_ejercicio, en.bloque, en.numero_version, en.tipo_evidencia,
         en.codigo_texto, en.respuesta_explicacion, en.fecha_entrega,
         ar.nombre_original, ar.tamanio_bytes, ar.drive_file_id
@@ -34,9 +34,7 @@ export default async function handler(req, res) {
       JOIN estudiantes e ON e.id = en.estudiante_id
       JOIN actividades a ON a.id = en.actividad_id
       LEFT JOIN archivos_entrega ar ON ar.entrega_id = en.id
-      WHERE a.slug = 'arreglos-strings-01'
-        AND (${grupo}::text IS NULL OR e.grupo = ${grupo})
-      ORDER BY en.fecha_entrega DESC, e.apellido, e.nombre, en.numero_ejercicio, en.numero_version DESC
+      ORDER BY en.fecha_entrega DESC, a.titulo, e.apellido, e.nombre, en.numero_ejercicio, en.numero_version DESC
     `;
     return res.status(200).json({ ok: true, entregas });
   } catch (error) {
