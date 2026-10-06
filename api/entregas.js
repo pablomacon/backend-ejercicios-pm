@@ -63,7 +63,7 @@ async function confirmarUpload(sql, estudiante, body) {
 export default async function handler(req, res) {
   cors(req, res); if (req.method === "OPTIONS") return res.status(200).end(); if (req.method !== "POST") return methodError(res);
   try {
-    const { sql, estudiante } = await access(req.body?.sessionToken || req.body?.idToken);
+    const { sql, estudiante } = await access(req.body?.sessionToken || req.body?.idToken, req.body?.activitySlug);
     const actions = { estado, "guardar-texto": guardarTexto, "iniciar-upload": iniciarUpload, "confirmar-upload": confirmarUpload };
     const action = actions[req.body?.accion]; if (!action) return res.status(400).json({ ok: false, message: "Acción de entrega no válida." });
     return res.status(200).json(await action(sql, estudiante, req.body || {}));
