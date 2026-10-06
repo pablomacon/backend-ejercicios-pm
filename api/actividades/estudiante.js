@@ -115,7 +115,17 @@ export default async function handler(req, res) {
         a.tema,
         a.orden,
         r.habilitada
-      ORDER BY a.orden DESC, a.fecha_creacion DESC
+      ORDER BY
+        CASE
+          WHEN a.tema = 'metodos' THEN 5
+          WHEN a.tema IN ('arreglos', 'arreglos-strings') THEN 4
+          WHEN a.tema = 'iterativas' THEN 3
+          WHEN a.tema = 'condicionales' THEN 2
+          WHEN a.tema = 'variables' THEN 1
+          ELSE 0
+        END DESC,
+        a.orden DESC,
+        a.fecha_creacion DESC
     `;
 
     return res.status(200).json({
