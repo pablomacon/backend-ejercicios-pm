@@ -52,8 +52,15 @@ async function confirmarUpload(sql, estudiante, body) {
     response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,size,parents)&pageSize=1`, { headers: { Authorization: `Bearer ${auth}` } });
   }
   const result = await response.json().catch(() => ({}));
-  const file = directResult ? result : result.files?.[0];
-  if (!response.ok || !file || (fileId && file.id !== fileId) || file.name !== item.nombre_drive || !file.parents?.includes(item.drive_folder_id) || Number(file.size) !== Number(item.tamanio_bytes)) { const error = new Error("No pudimos comprobar que Drive recibiera el archivo completo. Podés volver a intentar esta misma entrega."); error.status = 409; throw error; }
+  const candidate = directResult ? result : result.files?.[0];
+  // La consulta de estado de una carga reanudable devuelve los campos pedidos al
+  // iniciar la sesión, que no incluyen necesariamente `parents`. Consultamos el
+  // archivo por su id para validar siempre contra sus metadatos completos.
+  const verification = response.ok && candidate?.id
+    ? await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(candidate.id)}?fields=id,name,mimeType,size,parents`, { headers: { Authorization: `Bearer ${auth}` } })
+    : response;
+  const file = verification === response ? candidate : await verification.json().catch(() => ({}));
+  if (!response.ok || !verification.ok || !file || (fileId && file.id !== fileId) || file.name !== item.nombre_drive || !file.parents?.includes(item.drive_folder_id) || Number(file.size) !== Number(item.tamanio_bytes)) { const error = new Error("No pudimos comprobar que Drive recibiera el archivo completo. Podés volver a intentar esta misma entrega."); error.status = 409; throw error; }
   const entrega = await createDelivery(sql, { estudianteId: estudiante.id, actividadId: estudiante.actividad_id, numeroEjercicio: item.numero_ejercicio, tipo: "archivo", explicacion });
   await sql`INSERT INTO archivos_entrega (entrega_id,drive_file_id,nombre_original,nombre_drive,mime_type,extension,tamanio_bytes) VALUES (${entrega[0].id},${file.id},${item.nombre_original},${file.name},${file.mimeType || item.mime_type},${item.extension},${item.tamanio_bytes})`;
   await sql`DELETE FROM entregas_upload_pendientes WHERE token=${uploadToken}`;
