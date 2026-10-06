@@ -1,6 +1,6 @@
 -- Actividad de Métodos en Java para 1MF, 1MG y profesor.
 INSERT INTO actividades (slug, titulo, activa, fecha_creacion, anio, asignatura, tema, orden, url, descripcion)
-SELECT 'metodos-java-01', 'Métodos en Java — Actividad práctica', TRUE, CURRENT_TIMESTAMP, 2026, 'pi', 'metodos', 1, '/2026/pi/metodos/01/', 'Actividad práctica de programación sobre métodos en Java con entrega de código y archivos.'
+SELECT 'metodos-java-01', 'Métodos en Java — Actividad 1', TRUE, CURRENT_TIMESTAMP, 2026, 'pi', 'metodos', 1, '/2026/pi/metodos/01/', 'Actividad práctica para reconocer, completar y utilizar métodos en Java, trabajando métodos sin parámetros, con parámetros, con retorno y booleanos.'
 WHERE NOT EXISTS (SELECT 1 FROM actividades WHERE slug = 'metodos-java-01');
 
 INSERT INTO preguntas (actividad_slug, numero_pregunta, respuesta_correcta)
