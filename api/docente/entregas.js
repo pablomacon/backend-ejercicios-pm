@@ -24,17 +24,34 @@ export default async function handler(req, res) {
   try {
     await validate(req.body?.idToken);
     const entregas = await sql`
-      SELECT
+      SELECT * FROM (
+        SELECT
         en.id AS entrega_id, e.id AS estudiante_id, e.nombre, e.apellido, e.grupo,
         a.slug AS actividad_slug, a.titulo AS actividad_titulo,
         en.numero_ejercicio, en.bloque, en.numero_version, en.tipo_evidencia,
         en.codigo_texto, en.respuesta_explicacion, en.fecha_entrega,
-        ar.nombre_original, ar.tamanio_bytes, ar.drive_file_id
-      FROM entregas_ejercicios en
-      JOIN estudiantes e ON e.id = en.estudiante_id
-      JOIN actividades a ON a.id = en.actividad_id
-      LEFT JOIN archivos_entrega ar ON ar.entrega_id = en.id
-      ORDER BY en.fecha_entrega DESC, a.titulo, e.apellido, e.nombre, en.numero_ejercicio, en.numero_version DESC
+        ar.nombre_original, ar.tamanio_bytes, ar.drive_file_id, NULL::jsonb AS respuesta_formulario
+        FROM entregas_ejercicios en
+        JOIN estudiantes e ON e.id = en.estudiante_id
+        JOIN actividades a ON a.id = en.actividad_id
+        LEFT JOIN archivos_entrega ar ON ar.entrega_id = en.id
+        UNION ALL
+        SELECT * FROM (
+          SELECT DISTINCT ON (ef.estudiante_id, ef.actividad_id, ef.numero_ejercicio)
+            ef.id AS entrega_id, e.id AS estudiante_id, e.nombre, e.apellido, e.grupo,
+            a.slug AS actividad_slug, a.titulo AS actividad_titulo,
+            ef.numero_ejercicio, ef.numero_ejercicio AS bloque, ef.numero_version, 'formulario'::varchar AS tipo_evidencia,
+            NULL::text AS codigo_texto, NULL::text AS respuesta_explicacion, ef.fecha_entrega,
+            NULL::text AS nombre_original, NULL::bigint AS tamanio_bytes, NULL::varchar AS drive_file_id,
+            ef.respuesta AS respuesta_formulario
+          FROM entregas_formularios ef
+          JOIN estudiantes e ON e.id = ef.estudiante_id
+          JOIN actividades a ON a.id = ef.actividad_id
+          WHERE ef.estado = 'entregado'
+          ORDER BY ef.estudiante_id, ef.actividad_id, ef.numero_ejercicio, ef.numero_version DESC
+        ) AS formularios_recientes
+      ) AS entregas_unificadas
+      ORDER BY fecha_entrega DESC, actividad_titulo, apellido, nombre, numero_ejercicio, numero_version DESC
     `;
     return res.status(200).json({ ok: true, entregas });
   } catch (error) {

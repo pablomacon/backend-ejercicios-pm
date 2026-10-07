@@ -84,6 +84,7 @@ export default async function handler(req, res) {
         a.titulo,
         a.descripcion,
         a.url,
+        a.fecha_creacion,
         a.anio,
         a.asignatura,
         a.tema,
@@ -94,7 +95,15 @@ export default async function handler(req, res) {
         MAX(i.puntaje_obtenido)::numeric AS mejor_puntaje,
         MAX(i.puntaje_total)::numeric AS puntaje_total,
         MAX(i.juicio) AS juicio,
-        MAX(i.fecha_intento) AS ultimo_intento
+        MAX(i.fecha_intento) AS ultimo_intento,
+        CASE WHEN a.slug = 'poo-intro-01' THEN 3 ELSE NULL END AS entregas_totales,
+        CASE WHEN a.slug = 'poo-intro-01' THEN (
+          SELECT COUNT(DISTINCT ef.numero_ejercicio)::int
+          FROM entregas_formularios ef
+          WHERE ef.estudiante_id = r.estudiante_id
+            AND ef.actividad_id = a.id
+            AND ef.estado = 'entregado'
+        ) ELSE 0 END AS entregas_realizadas
       FROM realiza r
       JOIN actividades a ON a.id = r.actividad_id
       LEFT JOIN intentos i
@@ -110,22 +119,14 @@ export default async function handler(req, res) {
         a.titulo,
         a.descripcion,
         a.url,
+        a.fecha_creacion,
         a.anio,
         a.asignatura,
         a.tema,
         a.orden,
+        r.estudiante_id,
         r.habilitada
-      ORDER BY
-        CASE
-          WHEN a.tema = 'metodos' THEN 5
-          WHEN a.tema IN ('arreglos', 'arreglos-strings') THEN 4
-          WHEN a.tema = 'iterativas' THEN 3
-          WHEN a.tema = 'condicionales' THEN 2
-          WHEN a.tema = 'variables' THEN 1
-          ELSE 0
-        END DESC,
-        a.orden DESC,
-        a.fecha_creacion DESC
+      ORDER BY a.fecha_creacion DESC, a.id DESC
     `;
 
     return res.status(200).json({

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { access, allowedExtensions, cors, createDelivery, deliveryFolder, driveToken, exercise, extension, MAX_BYTES, safeName } from "../lib/entregas.js";
+import { access, allowedExtensions, cors, createDelivery, deliveryFolder, driveToken, exercise, extension, FORM_DELIVERY_SLUGS, MAX_BYTES, safeName } from "../lib/entregas.js";
+import { respuestaFormulario } from "../lib/form-deliveries.js";
 
 function methodError(res) { return res.status(405).json({ ok: false, message: "Método no permitido." }); }
 function fail(res, error, fallback) { return res.status(error.status || 500).json({ ok: false, message: error.message || fallback }); }
@@ -7,6 +8,23 @@ function fail(res, error, fallback) { return res.status(error.status || 500).jso
 async function estado(sql, estudiante) {
   const entregas = await sql`SELECT DISTINCT ON (numero_ejercicio) numero_ejercicio,numero_version,fecha_entrega,tipo_evidencia FROM entregas_ejercicios WHERE estudiante_id=${estudiante.id} AND actividad_id=${estudiante.actividad_id} AND estado='entregado' ORDER BY numero_ejercicio,numero_version DESC`;
   return { ok: true, entregas };
+}
+
+async function estadoFormulario(sql, estudiante) {
+  if (!FORM_DELIVERY_SLUGS.has(estudiante.actividad_slug)) {
+    const error = new Error("Esta actividad no usa entregas de formulario."); error.status = 400; throw error;
+  }
+  const entregas = await sql`SELECT DISTINCT ON (numero_ejercicio) numero_ejercicio,numero_version,fecha_entrega,respuesta FROM entregas_formularios WHERE estudiante_id=${estudiante.id} AND actividad_id=${estudiante.actividad_id} AND estado='entregado' ORDER BY numero_ejercicio,numero_version DESC`;
+  return { ok: true, entregas };
+}
+
+async function guardarFormulario(sql, estudiante, body) {
+  const numero = Number(body.numeroEjercicio);
+  const respuesta = respuestaFormulario(estudiante.actividad_slug, numero, body.respuesta);
+  if (!respuesta) { const error = new Error("Completá todas las respuestas antes de entregar este ejercicio."); error.status = 400; throw error; }
+  const version = await sql`SELECT COALESCE(MAX(numero_version),0)+1 AS numero FROM entregas_formularios WHERE estudiante_id=${estudiante.id} AND actividad_id=${estudiante.actividad_id} AND numero_ejercicio=${numero}`;
+  const entrega = await sql`INSERT INTO entregas_formularios (estudiante_id,actividad_id,numero_ejercicio,respuesta,numero_version) VALUES (${estudiante.id},${estudiante.actividad_id},${numero},${JSON.stringify(respuesta)}::jsonb,${version[0].numero}) RETURNING id,numero_version,fecha_entrega`;
+  return { ok: true, entrega: entrega[0] };
 }
 
 async function guardarTexto(sql, estudiante, body) {
@@ -71,7 +89,7 @@ export default async function handler(req, res) {
   cors(req, res); if (req.method === "OPTIONS") return res.status(200).end(); if (req.method !== "POST") return methodError(res);
   try {
     const { sql, estudiante } = await access(req.body?.sessionToken || req.body?.idToken, req.body?.activitySlug);
-    const actions = { estado, "guardar-texto": guardarTexto, "iniciar-upload": iniciarUpload, "confirmar-upload": confirmarUpload };
+    const actions = { estado, "estado-formulario": estadoFormulario, "guardar-formulario": guardarFormulario, "guardar-texto": guardarTexto, "iniciar-upload": iniciarUpload, "confirmar-upload": confirmarUpload };
     const action = actions[req.body?.accion]; if (!action) return res.status(400).json({ ok: false, message: "Acción de entrega no válida." });
     return res.status(200).json(await action(sql, estudiante, req.body || {}));
   } catch (error) { return fail(res, error, "No se pudo procesar la entrega."); }
