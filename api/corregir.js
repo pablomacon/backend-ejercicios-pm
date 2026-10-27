@@ -1,4 +1,6 @@
 import { neon } from "@neondatabase/serverless";
+import { corregirUml, esActividadUml, UML_TOTAL } from "../lib/uml-drag.js";
+import { verifyStudentSession } from "../lib/student-session.js";
 
 const allowedOrigins = [
   "https://pablomacon.github.io",
@@ -119,7 +121,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { respuestas, slug, estudianteId } = req.body;
+    const { respuestas, slug, estudianteId, sessionToken } = req.body;
+
+    if (esActividadUml(slug)) {
+      const session = verifyStudentSession(sessionToken, slug);
+      if (!session) return res.status(401).json({ ok: false, message: "Sesión inválida o vencida." });
+      const detalles = [];
+      try { for (let numero = 1; numero <= 7; numero += 1) detalles.push(corregirUml(respuestas?.[numero], numero)); }
+      catch (error) { return res.status(400).json({ ok: false, message: error.message }); }
+      const puntaje = detalles.reduce((s, d) => s + d.puntaje, 0);
+      const total = detalles.reduce((s, d) => s + d.total, 0);
+      if (total !== UML_TOTAL) throw new Error("La clave UML tiene un total inconsistente.");
+      return res.status(200).json({ ok: true, puntaje, total, detalles });
+    }
 
     if (!respuestas || !slug || !estudianteId) {
       return res.status(400).json({

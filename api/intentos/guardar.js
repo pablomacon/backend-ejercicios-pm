@@ -1,4 +1,6 @@
 import { neon } from "@neondatabase/serverless";
+import { corregirUml, esActividadUml, UML_TOTAL } from "../../lib/uml-drag.js";
+import { verifyStudentSession } from "../../lib/student-session.js";
 
 const allowedOrigins = [
   "https://pablomacon.github.io",
@@ -146,6 +148,7 @@ export default async function handler(req, res) {
       juicio,
       devolucion,
       respuestas,
+      sessionToken,
     } = req.body;
 
     if (
@@ -165,6 +168,18 @@ export default async function handler(req, res) {
     }
 
     const sql = neon(process.env.DATABASE_URL);
+
+    const actividadUml = esActividadUml(actividad_slug);
+    let correccionUml = null;
+    if (actividadUml) {
+      const session = verifyStudentSession(sessionToken, actividad_slug);
+      if (!session) return res.status(401).json({ ok: false, message: "Sesión inválida o vencida." });
+      const estudianteSesion = await sql`SELECT id FROM estudiantes WHERE lower(correo_electronico) = lower(${session.email}) AND activo = TRUE LIMIT 1`;
+      if (!estudianteSesion.length || Number(estudianteSesion[0].id) !== Number(estudiante_id)) return res.status(403).json({ ok: false, message: "La sesión no corresponde al estudiante." });
+      try { correccionUml = respuestas.map(r => corregirUml(r.respuesta, r.numero ?? r.numero_pregunta)); }
+      catch (error) { return res.status(400).json({ ok: false, message: error.message }); }
+      if (correccionUml.length !== 7 || correccionUml.reduce((s, d) => s + d.total, 0) !== UML_TOTAL) return res.status(400).json({ ok: false, message: "Entrega UML incompleta o clave inconsistente." });
+    }
 
     const actividadResultado = await sql`
       SELECT id, slug
@@ -234,6 +249,9 @@ export default async function handler(req, res) {
       preguntasPorNumero.set(Number(pregunta.numero_pregunta), pregunta);
     }
 
+    const puntajeServidor = actividadUml ? correccionUml.reduce((s, d) => s + d.puntaje, 0) : puntaje_obtenido;
+    const totalServidor = actividadUml ? UML_TOTAL : puntaje_total;
+    const porcentajeServidor = actividadUml ? Math.round((puntajeServidor / totalServidor) * 100) : porcentaje;
     const nuevoIntento = await sql`
       INSERT INTO intentos (
         estudiante_id,
@@ -249,9 +267,9 @@ export default async function handler(req, res) {
         ${estudiante_id},
         ${actividad_id},
         ${numero_intento},
-        ${puntaje_obtenido},
-        ${puntaje_total},
-        ${porcentaje},
+        ${puntajeServidor},
+        ${totalServidor},
+        ${porcentajeServidor},
         ${juicio},
         ${devolucion}
       )
@@ -280,11 +298,13 @@ export default async function handler(req, res) {
           ? respuesta.respuesta
           : respuesta.respuesta_dada;
 
-      const respuestaDadaTexto = respuestaATexto(respuestaDada);
+      const detalleUml = actividadUml ? correccionUml.find(d => d.numero === numeroPregunta) : null;
+      // El detalle persistido no incluye la asociación clase-diagrama ni la clave; puede ser leído por el estudiante.
+      const respuestaDadaTexto = actividadUml ? JSON.stringify({ asignacion: respuestaDada, resumen: detalleUml && { aciertos: detalleUml.aciertos, incorrectos: detalleUml.incorrectos, omitidos: detalleUml.omitidos, distractores: detalleUml.distractores, puntaje: detalleUml.puntaje, total: detalleUml.total } }) : respuestaATexto(respuestaDada);
 
-      const respuestaCorrecta = preguntaBD?.respuesta_correcta ?? "";
+      const respuestaCorrecta = actividadUml ? "" : (preguntaBD?.respuesta_correcta ?? "");
 
-      const esCorrecta = preguntaBD
+      const esCorrecta = actividadUml ? Boolean(detalleUml?.esCorrecta) : preguntaBD
         ? corregirRespuesta({
             respuestaDada,
             respuestaCorrecta,
