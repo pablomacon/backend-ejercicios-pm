@@ -97,10 +97,11 @@ export default async function handler(req, res) {
         MAX(i.juicio) AS juicio,
         MAX(i.fecha_intento) AS ultimo_intento,
         CASE WHEN a.slug = 'talleres-optativos-01' THEN 8
+             WHEN a.slug IN ('ape-serie-a', 'ape-serie-b') THEN 10
              WHEN a.slug = 'poo-intro-01' THEN 3
              WHEN a.slug IN ('poo-modelado-01', 'poo-estado-01') THEN 1
              ELSE NULL END AS entregas_totales,
-        CASE WHEN a.slug = 'talleres-optativos-01' THEN (
+        CASE WHEN a.slug IN ('talleres-optativos-01', 'ape-serie-a', 'ape-serie-b') THEN (
           SELECT COUNT(DISTINCT ee.numero_ejercicio)::int
           FROM entregas_ejercicios ee
           WHERE ee.estudiante_id = r.estudiante_id

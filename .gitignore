@@ -1,0 +1,4 @@
+# Material docente privado: no publicar las claves ni las soluciones.
+/migrations/borrador-ape-*.json
+/tests/ape-revisar-borradores.cjs
+/node_modules/

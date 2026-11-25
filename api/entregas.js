@@ -29,6 +29,7 @@ async function guardarFormulario(sql, estudiante, body) {
 
 async function guardarTexto(sql, estudiante, body) {
   const numero = exercise(body.numeroEjercicio), codigo = String(body.codigoTexto || "").trim(), explicacion = String(body.respuestaExplicacion || "").trim();
+  if (estudiante.actividad_slug.startsWith('ape-serie-') && numero > 10) { const error = new Error('Número de ejercicio no válido.'); error.status = 400; throw error; }
   if (!numero || !codigo || !explicacion) { const error = new Error("Se requiere programa escrito y respuesta para explicar."); error.status = 400; throw error; }
   const entrega = await createDelivery(sql, { estudianteId: estudiante.id, actividadId: estudiante.actividad_id, numeroEjercicio: numero, tipo: "texto", codigo, explicacion });
   return { ok: true, entrega: entrega[0] };
@@ -85,12 +86,17 @@ async function confirmarUpload(sql, estudiante, body) {
   return { ok: true, entrega: entrega[0] };
 }
 
-export default async function handler(req, res) {
+export function crearHandlerEntregas(obtenerAcceso = access) {
+ return async function handler(req, res) {
   cors(req, res); if (req.method === "OPTIONS") return res.status(200).end(); if (req.method !== "POST") return methodError(res);
   try {
-    const { sql, estudiante } = await access(req.body?.sessionToken || req.body?.idToken, req.body?.activitySlug);
+    const { sql, estudiante } = await obtenerAcceso(req.body?.sessionToken || req.body?.idToken, req.body?.activitySlug);
+    if (estudiante.actividad_slug.startsWith('ape-serie-') && !['estado', 'guardar-texto'].includes(req.body?.accion)) { const error = new Error('Acción no disponible para esta actividad.'); error.status = 400; throw error; }
     const actions = { estado, "estado-formulario": estadoFormulario, "guardar-formulario": guardarFormulario, "guardar-texto": guardarTexto, "iniciar-upload": iniciarUpload, "confirmar-upload": confirmarUpload };
     const action = actions[req.body?.accion]; if (!action) return res.status(400).json({ ok: false, message: "Acción de entrega no válida." });
     return res.status(200).json(await action(sql, estudiante, req.body || {}));
   } catch (error) { return fail(res, error, "No se pudo procesar la entrega."); }
+ };
 }
+
+export default crearHandlerEntregas();
